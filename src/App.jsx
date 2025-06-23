@@ -11,7 +11,7 @@ function Room() {
 function App() {
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
-      <Canvas camera={{ position: [0, 1.6, 0], fov: 75 }}>
+      <Canvas camera={{ position: [-7.8, 0.7, 0], fov: 75 }}>
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} />
         
