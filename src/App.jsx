@@ -27,7 +27,7 @@ function FPSWeapon({ onShoot }) {
 
   useEffect(() => {
     const handleClick = () => {
-      const { targets, canShoot, onEnemyHit } = onShoot()
+      const { targets, canShoot, onEnemyHit, onFakeHit } = onShoot()
       if (!canShoot || !targets?.length) return
 
       if (soundRef.current?.isPlaying) soundRef.current.stop()
@@ -46,7 +46,11 @@ function FPSWeapon({ onShoot }) {
         const hitEnemy = targets.find(e => e.mesh === hit || hit.parent === e.mesh)
         if (hitEnemy) {
           hitEnemy.onHit()
-          if (hitEnemy.isReal) onEnemyHit?.()
+          if (hitEnemy.isReal) {
+            onEnemyHit?.()
+          } else {
+            onFakeHit?.()
+          }
         }
       }
     }
@@ -93,7 +97,7 @@ function EnemyGroup({ registerEnemies }) {
   ]
 
   const enemyRefs = useRef([])
-  const realEnemyIndex = useRef(Math.floor(Math.random() * 3)) // choose one randomly
+  const realEnemyIndex = useRef(Math.floor(Math.random() * 3)) // one random real
 
   useEffect(() => {
     registerEnemies(
@@ -131,6 +135,13 @@ function EnemyGroup({ registerEnemies }) {
 export default function App() {
   const enemiesRef = useRef([])
   const [ammo, setAmmo] = useState(6)
+  const [popup, setPopup] = useState('')
+
+ const showPopup = (text) => {
+
+    setPopup(text)
+    setTimeout(() => setPopup(''), 1500)
+  }
 
   const handleShoot = () => {
     if (ammo <= 0) return { canShoot: false, targets: [] }
@@ -141,7 +152,11 @@ export default function App() {
       canShoot: true,
       targets: enemiesRef.current,
       onEnemyHit: () => {
-        setAmmo(a => a + 1) // +1 if real enemy shot
+        setAmmo(a => a + 1)
+        showPopup('wagmi')
+      },
+      onFakeHit: () => {
+        showPopup('goodluck wasting ammo!')
       },
     }
   }
@@ -170,7 +185,7 @@ export default function App() {
         top: 20,
         left: 20,
         color: 'white',
-        background: 'rgba(0,0,0,0.7)',
+        background: 'rgba(0,0,0,0.4)',
         padding: '10px',
         borderRadius: '5px',
         fontFamily: 'Arial',
@@ -210,6 +225,26 @@ export default function App() {
       }}>
         {ammo} / 0
       </div>
+
+      {/* Popup Message */}
+      {popup && (
+        <div style={{
+          position: 'absolute',
+          top: '45%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          fontSize: '26px',
+          color: 'white',
+          fontWeight: 'bold',
+          background: 'rgba(0,0,0,0.8)',
+          padding: '12px 20px',
+          borderRadius: '10px',
+          zIndex: 103,
+          fontFamily: 'monospace',
+        }}>
+          {popup}
+        </div>
+      )}
     </div>
   )
 }
