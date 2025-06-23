@@ -27,8 +27,11 @@ function FPSWeapon({ onShoot }) {
 
   useEffect(() => {
     const handleClick = () => {
-      const { targets, canShoot, onEnemyHit, onFakeHit } = onShoot()
-      if (!canShoot || !targets?.length) return
+      const { targets, canShoot, onRealHit, onFakeHit, gameOver } = onShoot()
+      if (!canShoot) {
+        gameOver?.()
+        return
+      }
 
       if (soundRef.current?.isPlaying) soundRef.current.stop()
       soundRef.current?.play()
@@ -36,10 +39,7 @@ function FPSWeapon({ onShoot }) {
       const raycaster = new Raycaster()
       raycaster.setFromCamera({ x: 0, y: 0 }, camera)
 
-      const intersects = raycaster.intersectObjects(
-        targets.map(obj => obj.mesh),
-        true
-      )
+      const intersects = raycaster.intersectObjects(targets.map(e => e.mesh), true)
 
       if (intersects.length > 0) {
         const hit = intersects[0].object
@@ -47,7 +47,7 @@ function FPSWeapon({ onShoot }) {
         if (hitEnemy) {
           hitEnemy.onHit()
           if (hitEnemy.isReal) {
-            onEnemyHit?.()
+            onRealHit?.()
           } else {
             onFakeHit?.()
           }
@@ -78,86 +78,105 @@ function FPSWeapon({ onShoot }) {
   )
 }
 
-function EnemyGroup({ registerEnemies }) {
-  const [visibleEnemies, setVisibleEnemies] = useState([])
-
-  useEffect(() => {
-    const timers = [
-      setTimeout(() => setVisibleEnemies(prev => [...prev, 0]), 1000),
-      setTimeout(() => setVisibleEnemies(prev => [...prev, 1]), 2000),
-      setTimeout(() => setVisibleEnemies(prev => [...prev, 2]), 3000),
-    ]
-    return () => timers.forEach(clearTimeout)
-  }, [])
-
-  const allEnemies = [
-    { position: [-5, 0.5, -3], rotation: [0, Math.PI / 4, 0] },
-    { position: [-3, 0.5, -1], rotation: [0, Math.PI / 6, 0] },
-    { position: [-4, 0.5, 2], rotation: [0, -Math.PI / 6, 0] },
-  ]
-
+function EnemyGroup({ enemySet, registerEnemies }) {
   const enemyRefs = useRef([])
-  const realEnemyIndex = useRef(Math.floor(Math.random() * 3)) // one random real
 
   useEffect(() => {
     registerEnemies(
       enemyRefs.current.map((ref, i) => ({
         mesh: ref,
-        isReal: i === realEnemyIndex.current,
+        isReal: enemySet[i].isReal,
         onHit: () => {
-          enemyRefs.current[i].visible = false
+          if (ref) ref.visible = false
         },
       }))
     )
-  }, [visibleEnemies.length])
+  }, [enemySet])
 
   return (
     <>
-      {visibleEnemies.map(i => {
-        const { position, rotation } = allEnemies[i]
-        return (
-          <mesh
-            key={i}
-            ref={el => (enemyRefs.current[i] = el)}
-            position={position}
-            rotation={rotation}
-            scale={[1, 1, 1]}
-          >
-            <capsuleGeometry args={[0.3, 1, 4, 8]} />
-            <meshStandardMaterial color="red" />
-          </mesh>
-        )
-      })}
+      {enemySet.map((enemy, i) => (
+        <mesh
+          key={i}
+          ref={el => (enemyRefs.current[i] = el)}
+          position={enemy.position}
+          rotation={[0, enemy.rotationY, 0]}
+          scale={[1, 1, 1]}
+        >
+          <capsuleGeometry args={[0.3, 1, 4, 8]} />
+          <meshStandardMaterial color="red" />
+        </mesh>
+      ))}
     </>
   )
+}
+
+function getRandomEnemySet(remainingEnemies) {
+  const nextSet = remainingEnemies.slice(0, 3)
+  const rest = remainingEnemies.slice(3)
+  return [nextSet, rest]
 }
 
 export default function App() {
   const enemiesRef = useRef([])
   const [ammo, setAmmo] = useState(6)
   const [popup, setPopup] = useState('')
+  const [enemyPool, setEnemyPool] = useState([])
+  const [currentSet, setCurrentSet] = useState([])
+  const [gameEnded, setGameEnded] = useState(false)
 
- const showPopup = (text) => {
+  useEffect(() => {
+    // Generate 48 enemies (16 real + 32 fake), randomize order
+    const enemies = []
+    for (let i = 0; i < 48; i++) {
+      enemies.push({
+        isReal: i < 16,
+        position: [
+          -5 + Math.random() * 4,
+          0.5,
+          -3 + Math.random() * 6,
+        ],
+        rotationY: Math.random() * Math.PI * 2,
+      })
+    }
 
+    // Shuffle
+    for (let i = enemies.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[enemies[i], enemies[j]] = [enemies[j], enemies[i]]
+    }
+
+    const [initialSet, rest] = getRandomEnemySet(enemies)
+    setCurrentSet(initialSet)
+    setEnemyPool(rest)
+  }, [])
+
+  const showPopup = (text) => {
     setPopup(text)
     setTimeout(() => setPopup(''), 1500)
   }
 
   const handleShoot = () => {
-    if (ammo <= 0) return { canShoot: false, targets: [] }
+    if (gameEnded || ammo <= 0) {
+      return { canShoot: false, targets: [], gameOver: () => showPopup('Game Over') }
+    }
 
-    setAmmo(ammo - 1)
+    setAmmo(a => a - 1)
 
     return {
       canShoot: true,
       targets: enemiesRef.current,
-      onEnemyHit: () => {
-        setAmmo(a => a + 1)
+      onRealHit: () => {
         showPopup('wagmi')
+        // Despawn current and spawn next set
+        const [nextSet, rest] = getRandomEnemySet(enemyPool)
+        setCurrentSet(nextSet)
+        setEnemyPool(rest)
       },
       onFakeHit: () => {
         showPopup('goodluck wasting ammo!')
       },
+      gameOver: () => showPopup('Game Over')
     }
   }
 
@@ -169,7 +188,9 @@ export default function App() {
 
         <Suspense fallback={null}>
           <Room />
-          <EnemyGroup registerEnemies={list => (enemiesRef.current = list)} />
+          {currentSet.length > 0 && (
+            <EnemyGroup enemySet={currentSet} registerEnemies={list => (enemiesRef.current = list)} />
+          )}
           <FPSWeapon onShoot={handleShoot} />
         </Suspense>
 
@@ -179,13 +200,13 @@ export default function App() {
         />
       </Canvas>
 
-      {/* Instructions */}
+      {/* HUD */}
       <div style={{
         position: 'absolute',
         top: 20,
         left: 20,
         color: 'white',
-        background: 'rgba(0,0,0,0.4)',
+        background: 'rgba(0,0,0,0.7)',
         padding: '10px',
         borderRadius: '5px',
         fontFamily: 'Arial',
@@ -226,7 +247,7 @@ export default function App() {
         {ammo} / 0
       </div>
 
-      {/* Popup Message */}
+      {/* Popup */}
       {popup && (
         <div style={{
           position: 'absolute',
