@@ -61,7 +61,7 @@ function Enemy() {
   return (
     <primitive 
       object={scene} 
-      position={[1, 1.6, -2]} // In front of player's view
+      position={[0, 0.2, -2]} // In front of player's view
       scale={[1, 1, 1]}
     />
   )
@@ -101,6 +101,21 @@ function App() {
       }}>
         Click to look around with mouse
       </div>
+
+      {/* Crosshair overlay */}
+      <div style={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        width: '10px',
+        height: '10px',
+        marginLeft: '-5px',
+        marginTop: '-5px',
+        backgroundColor: 'white',
+        borderRadius: '50%',
+        zIndex: 101,
+        pointerEvents: 'none'
+      }} />
     </div>
   )
 }
