@@ -1,123 +1,178 @@
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { PointerLockControls, useGLTF } from '@react-three/drei'
-import { Suspense, useState, useEffect, useRef } from 'react'
-import { Vector3 } from 'three'
-import './App.css'
+import { Suspense, useRef, useEffect, useState } from 'react'
+import { Vector3, Raycaster, AudioListener, AudioLoader, Audio } from 'three'
 
 function Room() {
   const { scene } = useGLTF('/room.gltf')
   return <primitive object={scene} />
 }
 
-function FPSWeapon() {
+function FPSWeapon({ onShoot }) {
   const { scene } = useGLTF('/deagle.gltf')
   const weaponRef = useRef()
-  
-  useFrame(({ camera }) => {
+  const { camera, gl } = useThree()
+
+  // Sound setup
+  const soundRef = useRef()
+  useEffect(() => {
+    const listener = new AudioListener()
+    camera.add(listener)
+
+    const sound = new Audio(listener)
+    soundRef.current = sound
+
+    new AudioLoader().load('/shoot.mp3', buffer => {
+      sound.setBuffer(buffer)
+      sound.setVolume(0.5)
+    })
+  }, [camera])
+
+  useEffect(() => {
+    const handleClick = () => {
+      if (soundRef.current?.isPlaying) soundRef.current.stop()
+      soundRef.current?.play()
+
+      const raycaster = new Raycaster()
+      raycaster.setFromCamera({ x: 0, y: 0 }, camera)
+
+      const intersects = raycaster.intersectObjects(
+        onShoot().map(obj => obj.mesh),
+        true
+      )
+
+      if (intersects.length > 0) {
+        const hit = intersects[0].object
+        const hitEnemy = onShoot().find(e => e.mesh === hit || hit.parent === e.mesh)
+        if (hitEnemy) hitEnemy.onHit()
+      }
+    }
+
+    gl.domElement.addEventListener('click', handleClick)
+    return () => gl.domElement.removeEventListener('click', handleClick)
+  }, [onShoot, gl, camera])
+
+  useFrame(() => {
     if (weaponRef.current) {
-      // Position weapon relative to camera (right hand position)
       const weaponPosition = new Vector3(0.2, -0.5, -0.55)
       weaponPosition.applyMatrix4(camera.matrixWorld)
       weaponRef.current.position.copy(weaponPosition)
-      
-      // Rotate weapon to match camera rotation
       weaponRef.current.rotation.copy(camera.rotation)
-      weaponRef.current.rotateY(Math.PI * 0.51) // Slight angle for natural look
+      weaponRef.current.rotateY(Math.PI * 0.51)
     }
   })
-  
+
   return (
-    <primitive 
+    <primitive
       ref={weaponRef}
-      object={scene.clone()} 
-      scale={[0.5, 0.5, 0.5]} // Adjust scale as needed
+      object={scene.clone()}
+      scale={[0.5, 0.5, 0.5]}
     />
   )
 }
 
-function Enemy() {
-  const { scene } = useGLTF('/enemy.gltf') // Update this path to your enemy file name
-  const [visible, setVisible] = useState(false)
-  
+function EnemyGroup({ registerEnemies }) {
+  const [visibleEnemies, setVisibleEnemies] = useState([])
+
   useEffect(() => {
-    // Spawn after 2 seconds
-    const spawnTimer = setTimeout(() => {
-      setVisible(true)
-    }, 2000)
-    
-    // Disappear after 3 more seconds (5 seconds total)
-    const disappearTimer = setTimeout(() => {
-      setVisible(false)
-    }, 5000)
-    
-    return () => {
-      clearTimeout(spawnTimer)
-      clearTimeout(disappearTimer)
-    }
+    const timers = [
+      setTimeout(() => setVisibleEnemies(prev => [...prev, 0]), 1000),
+      setTimeout(() => setVisibleEnemies(prev => [...prev, 1]), 2000),
+      setTimeout(() => setVisibleEnemies(prev => [...prev, 2]), 3000),
+    ]
+    return () => timers.forEach(clearTimeout)
   }, [])
-  
-  if (!visible) return null
-  
+
+  const allEnemies = [
+    { position: [-5, 0.5, -3], rotation: [0, Math.PI / 4, 0] },
+    { position: [-3, 0.5, -1], rotation: [0, Math.PI / 6, 0] },
+    { position: [-4, 0.5, 2], rotation: [0, -Math.PI / 6, 0] },
+  ]
+
+  const enemyRefs = useRef([])
+
+  useEffect(() => {
+    registerEnemies(
+      enemyRefs.current.map((ref, i) => ({
+        mesh: ref,
+        onHit: () => {
+          enemyRefs.current[i].visible = false
+        },
+      }))
+    )
+  }, [visibleEnemies.length])
+
   return (
-    <primitive 
-      object={scene} 
-      position={[0, 0.2, -2]} // In front of player's view
-      scale={[1, 1, 1]}
-    />
+    <>
+      {visibleEnemies.map(i => {
+        const { position, rotation } = allEnemies[i]
+        return (
+          <mesh
+            key={i}
+            ref={el => (enemyRefs.current[i] = el)}
+            position={position}
+            rotation={rotation}
+            scale={[1, 1, 1]}
+          >
+            <capsuleGeometry args={[0.3, 1, 4, 8]} />
+            <meshStandardMaterial color="red" />
+          </mesh>
+        )
+      })}
+    </>
   )
 }
 
-function App() {
+export default function App() {
+  const enemiesRef = useRef([])
+
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <Canvas camera={{ position: [-7.6, 0.7, 0], fov: 75 }}>
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} />
-        
+
         <Suspense fallback={null}>
           <Room />
-          <Enemy />
-          <FPSWeapon />
+          <EnemyGroup registerEnemies={list => (enemiesRef.current = list)} />
+          <FPSWeapon onShoot={() => enemiesRef.current} />
         </Suspense>
-        
-        {/* Mouse look controls with horizontal limits */}
-        <PointerLockControls 
-          minAzimuthAngle={-Math.PI / 3}  // Left limit (~-60 degrees)
-          maxAzimuthAngle={Math.PI / 3}   // Right limit (~60 degrees)
+
+        <PointerLockControls
+          minAzimuthAngle={-Math.PI / 3}
+          maxAzimuthAngle={Math.PI / 3}
         />
       </Canvas>
-      
-      {/* Instructions overlay */}
+
+      {/* Instructions */}
       <div style={{
         position: 'absolute',
-        top: '20px',
-        left: '20px',
+        top: 20,
+        left: 20,
         color: 'white',
+        background: 'rgba(0,0,0,0.7)',
+        padding: '10px',
+        borderRadius: '5px',
         fontFamily: 'Arial',
         zIndex: 100,
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        padding: '10px',
-        borderRadius: '5px'
       }}>
-        Click to look around with mouse
+        Click to shoot • Shoot all 3 red enemies
       </div>
 
-      {/* Crosshair overlay */}
+      {/* Crosshair */}
       <div style={{
         position: 'absolute',
         top: '50%',
         left: '50%',
-        width: '10px',
-        height: '10px',
-        marginLeft: '-5px',
-        marginTop: '-5px',
+        width: 10,
+        height: 10,
+        marginLeft: -5,
+        marginTop: -5,
         backgroundColor: 'white',
         borderRadius: '50%',
+        pointerEvents: 'none',
         zIndex: 101,
-        pointerEvents: 'none'
       }} />
     </div>
   )
 }
-
-export default App
