@@ -1,11 +1,38 @@
-import { Canvas } from '@react-three/fiber'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { PointerLockControls, useGLTF } from '@react-three/drei'
-import { Suspense, useState, useEffect } from 'react'
+import { Suspense, useState, useEffect, useRef } from 'react'
+import { Vector3 } from 'three'
 import './App.css'
 
 function Room() {
   const { scene } = useGLTF('/room.gltf')
   return <primitive object={scene} />
+}
+
+function FPSWeapon() {
+  const { scene } = useGLTF('/deagle.gltf')
+  const weaponRef = useRef()
+  
+  useFrame(({ camera }) => {
+    if (weaponRef.current) {
+      // Position weapon relative to camera (right hand position)
+      const weaponPosition = new Vector3(0.2, -0.5, -0.55)
+      weaponPosition.applyMatrix4(camera.matrixWorld)
+      weaponRef.current.position.copy(weaponPosition)
+      
+      // Rotate weapon to match camera rotation
+      weaponRef.current.rotation.copy(camera.rotation)
+      weaponRef.current.rotateY(Math.PI * 0.51) // Slight angle for natural look
+    }
+  })
+  
+  return (
+    <primitive 
+      ref={weaponRef}
+      object={scene.clone()} 
+      scale={[0.5, 0.5, 0.5]} // Adjust scale as needed
+    />
+  )
 }
 
 function Enemy() {
@@ -34,7 +61,7 @@ function Enemy() {
   return (
     <primitive 
       object={scene} 
-      position={[1, 0.15, 0]} // In front of player's view
+      position={[1, 1.6, -2]} // In front of player's view
       scale={[1, 1, 1]}
     />
   )
@@ -50,6 +77,7 @@ function App() {
         <Suspense fallback={null}>
           <Room />
           <Enemy />
+          <FPSWeapon />
         </Suspense>
         
         {/* Mouse look controls with horizontal limits */}
