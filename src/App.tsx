@@ -1,18 +1,28 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { PointerLockControls, useGLTF } from '@react-three/drei'
-import { Suspense, useRef, useEffect, useState } from 'react'
-import { Vector3, Raycaster, AudioListener, AudioLoader, Audio } from 'three'
+import { Suspense, useRef, useEffect, useState, SetStateAction } from 'react'
+import { Vector2, Vector3, Raycaster, AudioListener, AudioLoader, Audio } from 'three'
 
 function Room() {
   const { scene } = useGLTF('/room.gltf')
   return <primitive object={scene} />
 }
 
-function FPSWeapon({ onShoot }) {
+type FPSWeaponProps = {
+  onShoot: () => {
+    canShoot: boolean
+    targets: Array<any>
+    onRealHit?: () => void
+    onFakeHit?: () => void
+    gameOver?: () => void
+  }
+}
+
+function FPSWeapon({ onShoot }: FPSWeaponProps) {
   const { scene } = useGLTF('/deagle.gltf')
-  const weaponRef = useRef()
+  const weaponRef = useRef<any>(null)
   const { camera, gl } = useThree()
-  const soundRef = useRef()
+  const soundRef = useRef<Audio | null>(null)
 
   useEffect(() => {
     const listener = new AudioListener()
@@ -37,7 +47,8 @@ function FPSWeapon({ onShoot }) {
       soundRef.current?.play()
 
       const raycaster = new Raycaster()
-      raycaster.setFromCamera({ x: 0, y: 0 }, camera)
+      raycaster.setFromCamera(new Vector2(0, 0), camera)
+
 
       const intersects = raycaster.intersectObjects(targets.map(e => e.mesh), true)
 
@@ -78,8 +89,19 @@ function FPSWeapon({ onShoot }) {
   )
 }
 
-function EnemyGroup({ enemySet, registerEnemies }) {
-  const enemyRefs = useRef([])
+type Enemy = {
+  isReal: boolean
+  position: [number, number, number]
+  rotationY: number
+}
+
+type EnemyGroupProps = {
+  enemySet: Enemy[]
+  registerEnemies: (enemies: Array<{ mesh: any; isReal: boolean; onHit: () => void }>) => void
+}
+
+function EnemyGroup({ enemySet, registerEnemies }: EnemyGroupProps) {
+  const enemyRefs = useRef<any[]>([])
 
   useEffect(() => {
     registerEnemies(
@@ -111,23 +133,23 @@ function EnemyGroup({ enemySet, registerEnemies }) {
   )
 }
 
-function getRandomEnemySet(remainingEnemies) {
+function getRandomEnemySet(remainingEnemies: Enemy[]): [Enemy[], Enemy[]] {
   const nextSet = remainingEnemies.slice(0, 3)
   const rest = remainingEnemies.slice(3)
   return [nextSet, rest]
 }
 
 export default function App() {
-  const enemiesRef = useRef([])
+  const enemiesRef = useRef<Array<{ mesh: any; isReal: boolean; onHit: () => void }>>([])
   const [ammo, setAmmo] = useState(6)
   const [popup, setPopup] = useState('')
-  const [enemyPool, setEnemyPool] = useState([])
-  const [currentSet, setCurrentSet] = useState([])
+  const [enemyPool, setEnemyPool] = useState<Enemy[]>([])
+  const [currentSet, setCurrentSet] = useState<Enemy[]>([])
   const [gameEnded, setGameEnded] = useState(false)
 
   useEffect(() => {
     // Generate 48 enemies (16 real + 32 fake), randomize order
-    const enemies = []
+    const enemies: Enemy[] = []
     for (let i = 0; i < 48; i++) {
       enemies.push({
         isReal: i < 16,
@@ -135,7 +157,7 @@ export default function App() {
           -5 + Math.random() * 4,
           0.5,
           -3 + Math.random() * 6,
-        ],
+        ] as [number, number, number],
         rotationY: Math.random() * Math.PI * 2,
       })
     }
@@ -151,7 +173,7 @@ export default function App() {
     setEnemyPool(rest)
   }, [])
 
-  const showPopup = (text) => {
+  const showPopup = (text: SetStateAction<string>) => {
     setPopup(text)
     setTimeout(() => setPopup(''), 1500)
   }
@@ -194,10 +216,7 @@ export default function App() {
           <FPSWeapon onShoot={handleShoot} />
         </Suspense>
 
-        <PointerLockControls
-          minAzimuthAngle={-Math.PI / 3}
-          maxAzimuthAngle={Math.PI / 3}
-        />
+        <PointerLockControls />
       </Canvas>
 
       {/* HUD */}
