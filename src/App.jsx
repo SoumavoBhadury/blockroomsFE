@@ -12,16 +12,13 @@ function FPSWeapon({ onShoot }) {
   const { scene } = useGLTF('/deagle.gltf')
   const weaponRef = useRef()
   const { camera, gl } = useThree()
-
   const soundRef = useRef()
 
   useEffect(() => {
     const listener = new AudioListener()
     camera.add(listener)
-
     const sound = new Audio(listener)
     soundRef.current = sound
-
     new AudioLoader().load('/shoot.mp3', buffer => {
       sound.setBuffer(buffer)
       sound.setVolume(0.5)
@@ -30,8 +27,8 @@ function FPSWeapon({ onShoot }) {
 
   useEffect(() => {
     const handleClick = () => {
-      const { targets, canShoot } = onShoot()
-      if (!canShoot || !targets || targets.length === 0) return
+      const { targets, canShoot, onEnemyHit } = onShoot()
+      if (!canShoot || !targets?.length) return
 
       if (soundRef.current?.isPlaying) soundRef.current.stop()
       soundRef.current?.play()
@@ -47,7 +44,10 @@ function FPSWeapon({ onShoot }) {
       if (intersects.length > 0) {
         const hit = intersects[0].object
         const hitEnemy = targets.find(e => e.mesh === hit || hit.parent === e.mesh)
-        if (hitEnemy) hitEnemy.onHit()
+        if (hitEnemy) {
+          hitEnemy.onHit()
+          if (hitEnemy.isReal) onEnemyHit?.()
+        }
       }
     }
 
@@ -93,11 +93,13 @@ function EnemyGroup({ registerEnemies }) {
   ]
 
   const enemyRefs = useRef([])
+  const realEnemyIndex = useRef(Math.floor(Math.random() * 3)) // choose one randomly
 
   useEffect(() => {
     registerEnemies(
       enemyRefs.current.map((ref, i) => ({
         mesh: ref,
+        isReal: i === realEnemyIndex.current,
         onHit: () => {
           enemyRefs.current[i].visible = false
         },
@@ -132,8 +134,16 @@ export default function App() {
 
   const handleShoot = () => {
     if (ammo <= 0) return { canShoot: false, targets: [] }
+
     setAmmo(ammo - 1)
-    return { canShoot: true, targets: enemiesRef.current }
+
+    return {
+      canShoot: true,
+      targets: enemiesRef.current,
+      onEnemyHit: () => {
+        setAmmo(a => a + 1) // +1 if real enemy shot
+      },
+    }
   }
 
   return (
@@ -166,7 +176,7 @@ export default function App() {
         fontFamily: 'Arial',
         zIndex: 100,
       }}>
-        Click to shoot • Shoot all 3 red enemies
+        Click to shoot • Find the real enemy
       </div>
 
       {/* Crosshair */}
@@ -184,7 +194,7 @@ export default function App() {
         zIndex: 101,
       }} />
 
-      {/* Ammo Banner - Hardcoded Text Only */}
+      {/* Ammo Display */}
       <div style={{
         position: 'absolute',
         bottom: 20,
