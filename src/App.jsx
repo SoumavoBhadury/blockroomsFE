@@ -13,8 +13,8 @@ function FPSWeapon({ onShoot }) {
   const weaponRef = useRef()
   const { camera, gl } = useThree()
 
-  // Sound setup
   const soundRef = useRef()
+
   useEffect(() => {
     const listener = new AudioListener()
     camera.add(listener)
@@ -30,6 +30,9 @@ function FPSWeapon({ onShoot }) {
 
   useEffect(() => {
     const handleClick = () => {
+      const { targets, canShoot } = onShoot()
+      if (!canShoot || !targets || targets.length === 0) return
+
       if (soundRef.current?.isPlaying) soundRef.current.stop()
       soundRef.current?.play()
 
@@ -37,13 +40,13 @@ function FPSWeapon({ onShoot }) {
       raycaster.setFromCamera({ x: 0, y: 0 }, camera)
 
       const intersects = raycaster.intersectObjects(
-        onShoot().map(obj => obj.mesh),
+        targets.map(obj => obj.mesh),
         true
       )
 
       if (intersects.length > 0) {
         const hit = intersects[0].object
-        const hitEnemy = onShoot().find(e => e.mesh === hit || hit.parent === e.mesh)
+        const hitEnemy = targets.find(e => e.mesh === hit || hit.parent === e.mesh)
         if (hitEnemy) hitEnemy.onHit()
       }
     }
@@ -125,6 +128,13 @@ function EnemyGroup({ registerEnemies }) {
 
 export default function App() {
   const enemiesRef = useRef([])
+  const [ammo, setAmmo] = useState(6)
+
+  const handleShoot = () => {
+    if (ammo <= 0) return { canShoot: false, targets: [] }
+    setAmmo(ammo - 1)
+    return { canShoot: true, targets: enemiesRef.current }
+  }
 
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
@@ -135,7 +145,7 @@ export default function App() {
         <Suspense fallback={null}>
           <Room />
           <EnemyGroup registerEnemies={list => (enemiesRef.current = list)} />
-          <FPSWeapon onShoot={() => enemiesRef.current} />
+          <FPSWeapon onShoot={handleShoot} />
         </Suspense>
 
         <PointerLockControls
@@ -173,6 +183,23 @@ export default function App() {
         pointerEvents: 'none',
         zIndex: 101,
       }} />
+
+      {/* Ammo Banner - Hardcoded Text Only */}
+      <div style={{
+        position: 'absolute',
+        bottom: 20,
+        left: 20,
+        color: 'white',
+        fontSize: '20px',
+        fontWeight: 'bold',
+        fontFamily: 'monospace',
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        padding: '8px 14px',
+        borderRadius: '6px',
+        zIndex: 102,
+      }}>
+        {ammo} / 0
+      </div>
     </div>
   )
 }
